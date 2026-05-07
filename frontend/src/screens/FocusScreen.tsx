@@ -9,6 +9,8 @@ import { TimerDial } from "../components/TimerDial";
 import { RootStackParamList } from "../navigation/types";
 import { useMindFlowStore } from "../store/useMindFlowStore";
 import { colors, radius, shadows, spacing, typography } from "../theme/tokens";
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Svg, { Path, Rect } from "react-native-svg";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Focus">;
 
@@ -35,6 +37,22 @@ export function FocusScreen({ navigation }: Props) {
     return `${minutes}:${seconds}`;
   }, [remaining]);
 
+  const progress = (sessionSeconds - remaining) / sessionSeconds;
+  const shrink = useSharedValue(0);
+  const dialSize = isMobile ? 156 : 176;
+
+  useEffect(() => {
+    shrink.value = withTiming(progress, { duration: 220 });
+  }, [progress, shrink]);
+
+  const treeStyle = useAnimatedStyle(() => {
+    const p = shrink.value;
+    const scale = 0.92 - p * 0.36;
+    return {
+      transform: [{ translateY: p * 10 }, { scale }]
+    };
+  });
+
   async function handleComplete() {
     try {
       await completeFocusSession(Math.round((sessionSeconds - remaining) / 60) || 42);
@@ -51,7 +69,12 @@ export function FocusScreen({ navigation }: Props) {
       </FadeInView>
 
       <FadeInView delay={100} style={[styles.timer, isMobile && styles.timerMobile]}>
-        <TimerDial progress={(sessionSeconds - remaining) / sessionSeconds} />
+        <View style={{ width: dialSize, height: dialSize }}>
+          <TimerDial progress={progress} size={dialSize} />
+          <Animated.View pointerEvents="none" style={[styles.treeInDial, treeStyle]}>
+            <TreeSvg />
+          </Animated.View>
+        </View>
         <Text style={[styles.time, isMobile && styles.timeMobile]}>{time}</Text>
         <Text style={styles.caption}>{isRunning ? "Slow start · bell off" : "Ready when you are"}</Text>
       </FadeInView>
@@ -69,6 +92,26 @@ export function FocusScreen({ navigation }: Props) {
         <BottomNav active="Focus" />
       </View>
     </ScreenShell>
+  );
+}
+
+function TreeSvg() {
+  return (
+    <Svg width={128} height={128} viewBox="0 0 140 140">
+      <Rect x="62" y="74" width="16" height="34" rx="7" fill="rgba(31,39,31,0.9)" />
+      <Path
+        d="M70 16c16 16 30 34 30 46 0 14-13 24-30 24S40 76 40 62c0-12 14-30 30-46Z"
+        fill="rgba(240,241,237,0.35)"
+      />
+      <Path
+        d="M70 26c13 13 24 28 24 38 0 11-11 19-24 19s-24-8-24-19c0-10 11-25 24-38Z"
+        fill="rgba(240,241,237,0.55)"
+      />
+      <Path
+        d="M70 38c10 10 18 21 18 29 0 8-8 14-18 14s-18-6-18-14c0-8 8-19 18-29Z"
+        fill="rgba(240,241,237,0.78)"
+      />
+    </Svg>
   );
 }
 
@@ -103,6 +146,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacing.lg,
     ...shadows.glow
+  },
+  treeInDial: {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    marginLeft: -64,
+    marginTop: -64
   },
   timerMobile: {
     marginTop: spacing["2xl"],

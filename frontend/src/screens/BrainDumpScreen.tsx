@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { AnimatedPressable } from "../components/AnimatedPressable";
 import { BottomNav } from "../components/BottomNav";
@@ -13,10 +13,21 @@ export function BrainDumpScreen() {
   const isMobile = width < 640;
   const notes = useMindFlowStore((state) => state.notes);
   const createNote = useMindFlowStore((state) => state.createNote);
+  const streakUnlockToastPending = useMindFlowStore((state) => state.streakUnlockToastPending);
+  const acknowledgeStreakUnlock = useMindFlowStore((state) => state.acknowledgeStreakUnlock);
   const latest = useMemo(() => notes[0]?.content ?? "", [notes]);
   const [content, setContent] = useState(latest);
   const [status, setStatus] = useState("Autosaved locally");
   const [showPrevious, setShowPrevious] = useState(false);
+  const [showUnlock, setShowUnlock] = useState(false);
+
+  useEffect(() => {
+    if (!streakUnlockToastPending || showUnlock) return;
+    setShowUnlock(true);
+    const id = setTimeout(() => setShowUnlock(false), 4200);
+    void acknowledgeStreakUnlock();
+    return () => clearTimeout(id);
+  }, [acknowledgeStreakUnlock, showUnlock, streakUnlockToastPending]);
 
   const previousNotes = useMemo(() => {
     const unique: { id: string; content: string; createdAt: string }[] = [];
@@ -57,6 +68,12 @@ export function BrainDumpScreen() {
       </FadeInView>
 
       <FadeInView delay={100} style={[styles.editor, isMobile && styles.editorMobile]}>
+        {showUnlock ? (
+          <FadeInView style={styles.unlockBanner} distance={8}>
+            <Text style={styles.unlockTitle}>Streaks unlocked.</Text>
+            <Text style={styles.unlockBody}>A gentle count of days you showed up.</Text>
+          </FadeInView>
+        ) : null}
         <TextInput
           multiline
           value={content}
@@ -141,6 +158,28 @@ const styles = StyleSheet.create({
     padding: spacing["2xl"],
     marginTop: spacing["3xl"],
     ...shadows.panel
+  },
+  unlockBanner: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(240, 241, 237, 0.10)",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md
+  },
+  unlockTitle: {
+    color: "#eff2ea",
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800"
+  },
+  unlockBody: {
+    marginTop: 4,
+    color: "rgba(240, 241, 237, 0.75)",
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "600"
   },
   editorMobile: {
     marginTop: spacing["2xl"],

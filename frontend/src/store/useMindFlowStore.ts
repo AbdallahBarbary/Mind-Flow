@@ -31,6 +31,18 @@ export type WeatherState = {
   isAuto: boolean;
 };
 
+export type StreakState = {
+  days: number;
+  lastActiveDayKey?: string;
+  updatedAt?: string;
+};
+
+export type TaskMilestoneState = {
+  pending: boolean;
+  dayKey?: string;
+  count?: number;
+};
+
 type MindFlowState = {
   token: string | null;
   user: User | null;
@@ -39,6 +51,10 @@ type MindFlowState = {
   stats: StatsDto;
   tasks: TaskDto[];
   weather: WeatherState;
+  streak: StreakState;
+  streakUnlockSeen: boolean;
+  streakUnlockToastPending: boolean;
+  taskMilestone: TaskMilestoneState;
   isLoading: boolean;
   hydrateSession: () => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
@@ -56,11 +72,18 @@ type MindFlowState = {
   clearCompletedTasks: () => Promise<void>;
   setWeather: (weather: WeatherKind) => void;
   refreshWeather: () => Promise<void>;
+  hydrateStreak: () => Promise<void>;
+  acknowledgeStreakUnlock: () => Promise<void>;
+  hydrateMilestones: () => Promise<void>;
+  acknowledgeTaskMilestone: () => Promise<void>;
 };
 
 const sessionKey = "mindflow-session";
 const tasksKey = "mindflow-tasks-v1";
 const weatherKey = "mindflow-weather-v1";
+const streakKey = "mindflow-streak-v1";
+const streakUnlockSeenKey = "mindflow-streak-unlock-seen-v1";
+const taskMilestoneKey = "mindflow-task-milestone-v1";
 
 const defaultStats: StatsDto = {
   totalFocusMinutes: 138,
@@ -83,11 +106,57 @@ async function persistTasks(tasks: TaskDto[]) {
   await AsyncStorage.setItem(tasksKey, JSON.stringify(tasks));
 }
 
+async function persistStreak(streak: StreakState) {
+  await AsyncStorage.setItem(streakKey, JSON.stringify(streak));
+}
+
+async function persistStreakUnlockSeen(value: boolean) {
+  await AsyncStorage.setItem(streakUnlockSeenKey, value ? "1" : "0");
+}
+
+async function persistTaskMilestoneSeen(dayKey: string, count: number) {
+  await AsyncStorage.setItem(taskMilestoneKey, JSON.stringify({ dayKey, count }));
+}
+
 function toDayKey(d: Date) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function dayKeyToDate(dayKey: string) {
+  const [y, m, d] = dayKey.split("-").map((v) => Number(v));
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
+}
+
+function diffDays(aDayKey: string, bDayKey: string) {
+  const a = dayKeyToDate(aDayKey);
+  const b = dayKeyToDate(bDayKey);
+  const ms = a.getTime() - b.getTime();
+  return Math.round(ms / (24 * 60 * 60 * 1000));
+}
+
+async function bumpStreak(activeDayKey: string, set: any, get: any) {
+  const prev = get().streak as StreakState;
+  const last = prev.lastActiveDayKey;
+  const updatedAt = new Date().toISOString();
+
+  if (!last) {
+    const next = { days: 1, lastActiveDayKey: activeDayKey, updatedAt };
+    set((s: any) => ({ streak: next, stats: { ...s.stats, streakDays: next.days } }));
+    await persistStreak(next);
+    if (!get().streakUnlockSeen) set({ streakUnlockToastPending: true });
+    return;
+  }
+
+  const delta = diffDays(activeDayKey, last);
+  if (delta === 0) return;
+  const nextDays = delta === 1 ? prev.days + 1 : 1;
+  const next = { days: nextDays, lastActiveDayKey: activeDayKey, updatedAt };
+  set((s: any) => ({ streak: next, stats: { ...s.stats, streakDays: next.days } }));
+  await persistStreak(next);
+  if (nextDays === 1 && prev.days === 0 && !get().streakUnlockSeen) set({ streakUnlockToastPending: true });
 }
 
 export const useMindFlowStore = create<MindFlowState>()((set, get) => ({
@@ -114,6 +183,10 @@ export const useMindFlowStore = create<MindFlowState>()((set, get) => ({
         }
       ],
       weather: { kind: "rain", isAuto: true },
+      streak: { days: 0 },
+      streakUnlockSeen: false,
+      streakUnlockToastPending: false,
+      taskMilestone: { pending: false },
       isLoading: false,
 
       hydrateSession: async () => {
@@ -145,6 +218,42 @@ export const useMindFlowStore = create<MindFlowState>()((set, get) => ({
             if (savedWeather === "clear" || savedWeather === "rain") set({ weather: { kind: savedWeather, isAuto: false } });
           }
         }
+      },
+
+      acknowledgeStreakUnlock: async () => {
+        set({ streakUnlockToastPending: false, streakUnlockSeen: true });
+        await persistStreakUnlockSeen(true);
+      },
+
+      hydrateMilestones: async () => {
+        const raw = await AsyncStorage.getItem(taskMilestoneKey);
+        if (!raw) return;
+        try {
+          const parsed = JSON.parse(raw) as { dayKey?: string; count?: number };
+          if (parsed?.dayKey && typeof parsed.count === "number") {
+            set({ taskMilestone: { pending: false, dayKey: parsed.dayKey, count: parsed.count } });
+          }
+        } catch {
+          // ignore
+        }
+      },
+
+      acknowledgeTaskMilestone: async () => {
+        set((s) => ({ taskMilestone: { ...s.taskMilestone, pending: false } }));
+      },
+
+      hydrateStreak: async () => {
+        const raw = await AsyncStorage.getItem(streakKey);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw) as StreakState;
+            if (parsed && typeof parsed.days === "number") set({ streak: parsed });
+          } catch {
+            // ignore
+          }
+        }
+        const seen = await AsyncStorage.getItem(streakUnlockSeenKey);
+        if (seen === "1") set({ streakUnlockSeen: true });
       },
 
       register: async (email, password) => {
@@ -191,6 +300,7 @@ export const useMindFlowStore = create<MindFlowState>()((set, get) => ({
       createNote: async (content) => {
         const { data } = await api.post<NoteDto>("/notes", { content });
         set({ notes: [data, ...get().notes] });
+        void bumpStreak(toDayKey(new Date()), set, get);
       },
 
       updateNote: async (id, content) => {
@@ -212,6 +322,7 @@ export const useMindFlowStore = create<MindFlowState>()((set, get) => ({
         });
         set({ sessions: [data, ...get().sessions] });
         await get().fetchStats();
+        void bumpStreak(toDayKey(new Date()), set, get);
       },
 
       fetchStats: async () => {
@@ -232,15 +343,43 @@ export const useMindFlowStore = create<MindFlowState>()((set, get) => ({
         const next = [task, ...get().tasks];
         set({ tasks: next });
         await persistTasks(next);
+        await bumpStreak(task.dayKey, set, get);
       },
 
       toggleTask: async (id) => {
         const now = new Date().toISOString();
-        const next = get().tasks.map((t) =>
-          t.id === id ? { ...t, done: !t.done, completedAt: !t.done ? now : undefined } : t
-        );
+        let toggledDayKey: string | undefined;
+        let becameDone = false;
+        const next = get().tasks.map((t) => {
+          if (t.id !== id) return t;
+          const nextDone = !t.done;
+          toggledDayKey = t.dayKey;
+          becameDone = nextDone;
+          return { ...t, done: nextDone, completedAt: nextDone ? now : undefined };
+        });
         set({ tasks: next });
         await persistTasks(next);
+
+        if (!becameDone || !toggledDayKey) return;
+        // Milestone: every 5 completed tasks in a day (calm toast)
+        const completedCount = next.filter((t) => t.dayKey === toggledDayKey && t.done).length;
+        if (completedCount > 0 && completedCount % 5 === 0) {
+          const raw = await AsyncStorage.getItem(taskMilestoneKey);
+          let already = false;
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw) as { dayKey?: string; count?: number };
+              if (parsed?.dayKey === toggledDayKey && parsed?.count === completedCount) already = true;
+            } catch {
+              // ignore
+            }
+          }
+          if (!already) {
+            set({ taskMilestone: { pending: true, dayKey: toggledDayKey, count: completedCount } });
+            await persistTaskMilestoneSeen(toggledDayKey, completedCount);
+          }
+        }
+        await bumpStreak(toggledDayKey, set, get);
       },
 
       clearCompletedTasks: async () => {

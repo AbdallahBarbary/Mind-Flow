@@ -11,6 +11,8 @@ export default function App() {
   const hydrateSession = useMindFlowStore((state) => state.hydrateSession);
   const hydrateTasks = useMindFlowStore((state) => state.hydrateTasks);
   const refreshWeather = useMindFlowStore((state) => state.refreshWeather);
+  const hydrateStreak = useMindFlowStore((state) => state.hydrateStreak);
+  const hydrateMilestones = useMindFlowStore((state) => state.hydrateMilestones);
 
   useEffect(() => {
     if (typeof document !== "undefined") {
@@ -20,10 +22,12 @@ export default function App() {
     }
     void hydrateSession();
     void hydrateTasks();
+    void hydrateStreak();
+    void hydrateMilestones();
     void refreshWeather();
     const id = setInterval(() => void refreshWeather(), 1000 * 60 * 30);
     return () => clearInterval(id);
-  }, [hydrateSession, hydrateTasks, refreshWeather]);
+  }, [hydrateSession, hydrateTasks, hydrateStreak, hydrateMilestones, refreshWeather]);
 
   useEffect(() => {
     setAuthToken(token);

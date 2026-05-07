@@ -10,6 +10,7 @@ import { HomeScreen } from "../screens/HomeScreen";
 import { BrainDumpScreen } from "../screens/BrainDumpScreen";
 import { FocusScreen } from "../screens/FocusScreen";
 import { StatsScreen } from "../screens/StatsScreen";
+import { CalendarScreen } from "../screens/CalendarScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 
@@ -81,6 +82,7 @@ export function AppNavigator() {
         <Stack.Screen name="Notes" component={BrainDumpScreen} />
         <Stack.Screen name="Focus" component={FocusScreen} />
         <Stack.Screen name="Stats" component={StatsScreen} />
+        <Stack.Screen name="Calendar" component={CalendarScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
       </Stack.Navigator>

@@ -9,6 +9,7 @@ export type RootStackParamList = {
   Notes: undefined;
   Focus: undefined;
   Stats: undefined;
+  Calendar: undefined;
   Settings: undefined;
   Profile: undefined;
 };

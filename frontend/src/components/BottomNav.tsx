@@ -6,10 +6,11 @@ import { colors, radius, spacing } from "../theme/tokens";
 import { RootStackParamList } from "../navigation/types";
 import { AnimatedPressable } from "./AnimatedPressable";
 
-type RouteName = "Home" | "Notes" | "Focus" | "Stats";
+type RouteName = "Home" | "Calendar" | "Notes" | "Focus" | "Stats";
 
 const items: { label: string; route: RouteName; icon: string }[] = [
   { label: "Home", route: "Home", icon: "◉" },
+  { label: "Calendar", route: "Calendar", icon: "◍" },
   { label: "Notes", route: "Notes", icon: "◎" },
   { label: "Focus", route: "Focus", icon: "◌" },
   { label: "Stats", route: "Stats", icon: "◈" }

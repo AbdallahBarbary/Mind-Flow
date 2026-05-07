@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { FadeInView } from "../components/FadeInView";
@@ -25,6 +25,18 @@ export function HomeScreen({ navigation }: Props) {
   const weather = useMindFlowStore((s) => s.weather);
   const setWeather = useMindFlowStore((s) => s.setWeather);
   const refreshWeather = useMindFlowStore((s) => s.refreshWeather);
+  const streak = useMindFlowStore((s) => s.streak);
+  const taskMilestone = useMindFlowStore((s) => s.taskMilestone);
+  const acknowledgeTaskMilestone = useMindFlowStore((s) => s.acknowledgeTaskMilestone);
+  const [showMilestone, setShowMilestone] = useState(false);
+
+  useEffect(() => {
+    if (!taskMilestone.pending || showMilestone) return;
+    setShowMilestone(true);
+    const id = setTimeout(() => setShowMilestone(false), 4200);
+    void acknowledgeTaskMilestone();
+    return () => clearTimeout(id);
+  }, [acknowledgeTaskMilestone, showMilestone, taskMilestone.pending]);
 
   const days = useMemo(() => {
     const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -66,6 +78,9 @@ export function HomeScreen({ navigation }: Props) {
           </Text>
           <Text style={[styles.weatherSub, isMobile && styles.weatherSubMobile]}>
             {weather.label ? weather.label : weather.kind === "rain" ? "Rain" : "Clear"}
+          </Text>
+          <Text style={[styles.streakText, isMobile && styles.streakTextMobile]}>
+            {streak.days ? `${streak.days} day streak` : "Start a streak today"}
           </Text>
         </View>
         <View style={styles.weatherActions}>
@@ -120,6 +135,12 @@ export function HomeScreen({ navigation }: Props) {
       </FadeInView>
 
       <FadeInView delay={180}>
+        {showMilestone && taskMilestone.count ? (
+          <FadeInView style={styles.milestoneBanner} distance={8}>
+            <Text style={styles.milestoneTitle}>Quiet momentum.</Text>
+            <Text style={styles.milestoneBody}>You completed {taskMilestone.count} tasks today.</Text>
+          </FadeInView>
+        ) : null}
         <View style={styles.addRow}>
           <TextInput
             value={draftTask}
@@ -267,6 +288,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18
   },
+  streakText: {
+    color: "rgba(240, 241, 237, 0.7)",
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 6,
+    fontWeight: "700"
+  },
+  streakTextMobile: {
+    fontSize: 11,
+    lineHeight: 14
+  },
   profileButton: {
     width: 44,
     height: 44,
@@ -381,6 +413,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
     marginBottom: spacing.md
+  },
+  milestoneBanner: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(240, 241, 237, 0.10)",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md
+  },
+  milestoneTitle: {
+    color: "#eff2ea",
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800"
+  },
+  milestoneBody: {
+    marginTop: 4,
+    color: "rgba(240, 241, 237, 0.75)",
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "600"
   },
   input: {
     flex: 1,
