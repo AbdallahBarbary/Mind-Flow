@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { FadeInView } from "../components/FadeInView";
 import { BottomNav } from "../components/BottomNav";
@@ -7,6 +7,8 @@ import { AnimatedPressable } from "../components/AnimatedPressable";
 import { ScreenShell } from "../components/ScreenShell";
 import { RootStackParamList } from "../navigation/types";
 import { colors, radius, spacing } from "../theme/tokens";
+import { useMindFlowStore } from "../store/useMindFlowStore";
+import Animated, { FadeInDown, FadeOutUp, LinearTransition } from "react-native-reanimated";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
@@ -16,40 +18,40 @@ export function HomeScreen({ navigation }: Props) {
   const isDesktop = width >= 900;
   const desktopCardWidth = Math.max(210, Math.min(360, (width - 80) / 3));
 
-  const days = [
-    { day: "23", label: "Sun" },
-    { day: "24", label: "Mon" },
-    { day: "25", label: "Tue" },
-    { day: "26", label: "Wed" },
-    { day: "27", label: "Thu" }
-  ];
+  const storeTasks = useMindFlowStore((s) => s.tasks);
+  const addTask = useMindFlowStore((s) => s.addTask);
+  const toggleTask = useMindFlowStore((s) => s.toggleTask);
+  const clearCompletedTasks = useMindFlowStore((s) => s.clearCompletedTasks);
+  const weather = useMindFlowStore((s) => s.weather);
+  const setWeather = useMindFlowStore((s) => s.setWeather);
+  const refreshWeather = useMindFlowStore((s) => s.refreshWeather);
 
-  const [selectedDay, setSelectedDay] = useState("25");
-  const tasksByDay: Record<string, { time: string; title: string; priority: string; tone: string }[]> = {
-    "23": [
-      { time: "Now", title: "Capture\nbrain dump", priority: "High", tone: "#f26b34" },
-      { time: "Later", title: "Write\nnote\nsummary", priority: "Normal", tone: "#66715d" }
-    ],
-    "24": [
-      { time: "Now", title: "Start\nfocus\nsession", priority: "Medium", tone: "#d19627" },
-      { time: "Later", title: "Review\nweekly\nstats", priority: "Normal", tone: "#66715d" }
-    ],
-    "25": [
-      { time: "Now", title: "Capture\nbrain dump", priority: "High", tone: "#f26b34" },
-      { time: "Next", title: "Start\nfocus\nsession", priority: "Medium", tone: "#d19627" },
-      { time: "Later", title: "Review\nweekly\nstats", priority: "Normal", tone: "#66715d" }
-    ],
-    "26": [
-      { time: "Now", title: "Clean up\nolder\nnotes", priority: "Medium", tone: "#d19627" },
-      { time: "Next", title: "Start\nfocus\nsession", priority: "High", tone: "#f26b34" }
-    ],
-    "27": [
-      { time: "Now", title: "Read\ninsights\nsummary", priority: "Normal", tone: "#66715d" },
-      { time: "Later", title: "Plan\nnext\nsessions", priority: "Medium", tone: "#d19627" }
-    ]
-  };
-  const tasks = useMemo(() => tasksByDay[selectedDay] ?? tasksByDay["25"], [selectedDay]);
+  const days = useMemo(() => {
+    const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    return Array.from({ length: 5 }).map((_, i) => {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return { key, day: String(d.getDate()), label: labels[d.getDay()] };
+    });
+  }, []);
 
+  const [selectedDayKey, setSelectedDayKey] = useState(days[0]?.key ?? "");
+  const [draftTask, setDraftTask] = useState("");
+  const tasksForDay = useMemo(
+    () => storeTasks.filter((t) => t.dayKey === selectedDayKey),
+    [selectedDayKey, storeTasks]
+  );
+  const badgeByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of storeTasks) {
+      if (t.done) continue;
+      map.set(t.dayKey, (map.get(t.dayKey) ?? 0) + 1);
+    }
+    return map;
+  }, [storeTasks]);
   const inventory = [
     { title: "Open Brain Dump notes", subtitle: "Quick capture and autosave" },
     { title: "Track focus sessions", subtitle: "Timer, streak, and progress" }
@@ -59,29 +61,42 @@ export function HomeScreen({ navigation }: Props) {
     <ScreenShell>
       <FadeInView style={styles.weatherRow}>
         <View>
-          <Text style={[styles.weatherMain, isMobile && styles.weatherMainMobile]}>23°</Text>
-          <Text style={[styles.weatherSub, isMobile && styles.weatherSubMobile]}>70% chance of rain</Text>
+          <Text style={[styles.weatherMain, isMobile && styles.weatherMainMobile]}>
+            {typeof weather.tempC === "number" ? `${Math.round(weather.tempC)}°` : "—"}
+          </Text>
+          <Text style={[styles.weatherSub, isMobile && styles.weatherSubMobile]}>
+            {weather.label ? weather.label : weather.kind === "rain" ? "Rain" : "Clear"}
+          </Text>
         </View>
-        <AnimatedPressable onPress={() => navigation.navigate("Settings")} style={styles.profileButton}>
-          <Text style={styles.profileIcon}>◌</Text>
-        </AnimatedPressable>
+        <View style={styles.weatherActions}>
+          <AnimatedPressable
+            onPress={() => setWeather(weather.kind === "rain" ? "clear" : "rain")}
+            style={styles.weatherToggle}
+          >
+            <Text style={styles.weatherToggleText}>{weather.kind === "rain" ? "Rain" : "Clear"}</Text>
+          </AnimatedPressable>
+          <AnimatedPressable onPress={() => void refreshWeather()} style={styles.weatherToggle}>
+            <Text style={styles.weatherToggleText}>Auto</Text>
+          </AnimatedPressable>
+          <AnimatedPressable onPress={() => navigation.navigate("Settings")} style={styles.profileButton}>
+            <Text style={styles.profileIcon}>◌</Text>
+          </AnimatedPressable>
+        </View>
       </FadeInView>
 
       <FadeInView delay={80}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.daysRow}>
           {days.map((item) => (
             <AnimatedPressable
-              key={item.day}
-              style={[styles.dayChip, selectedDay === item.day && styles.activeDayChip]}
-              onPress={() => setSelectedDay(item.day)}
+              key={item.key}
+              style={[styles.dayChip, selectedDayKey === item.key && styles.activeDayChip]}
+              onPress={() => setSelectedDayKey(item.key)}
             >
-              {tasksByDay[item.day]?.length ? (
-                <Text style={styles.badge}>{tasksByDay[item.day].length}</Text>
-              ) : null}
-              <Text style={[styles.dayText, isMobile && styles.dayTextMobile, selectedDay === item.day && styles.activeDayText]}>
+              {badgeByKey.get(item.key) ? <Text style={styles.badge}>{badgeByKey.get(item.key)}</Text> : null}
+              <Text style={[styles.dayText, isMobile && styles.dayTextMobile, selectedDayKey === item.key && styles.activeDayText]}>
                 {item.day}
               </Text>
-              <Text style={[styles.dayLabel, isMobile && styles.dayLabelMobile, selectedDay === item.day && styles.activeDayLabel]}>
+              <Text style={[styles.dayLabel, isMobile && styles.dayLabelMobile, selectedDayKey === item.key && styles.activeDayLabel]}>
                 {item.label}
               </Text>
             </AnimatedPressable>
@@ -90,33 +105,96 @@ export function HomeScreen({ navigation }: Props) {
       </FadeInView>
 
       <FadeInView delay={120} style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, isMobile && styles.sectionTitleMobile]}>Daily flow</Text>
-        <AnimatedPressable style={styles.addTaskButton} onPress={() => navigation.navigate("Notes")}>
-          <Text style={[styles.addTaskText, isMobile && styles.addTaskTextMobile]}>Open notes</Text>
-        </AnimatedPressable>
+        <Text style={[styles.sectionTitle, isMobile && styles.sectionTitleMobile]}>Tasks</Text>
+        <View style={styles.headerButtons}>
+          <AnimatedPressable
+            style={[styles.addTaskButton, styles.clearButton]}
+            onPress={() => void clearCompletedTasks()}
+          >
+            <Text style={[styles.addTaskText, isMobile && styles.addTaskTextMobile]}>Clear done</Text>
+          </AnimatedPressable>
+          <AnimatedPressable style={styles.addTaskButton} onPress={() => navigation.navigate("Notes")}>
+            <Text style={[styles.addTaskText, isMobile && styles.addTaskTextMobile]}>Open notes</Text>
+          </AnimatedPressable>
+        </View>
       </FadeInView>
 
       <FadeInView delay={180}>
-        <ScrollView
-          horizontal={!isDesktop}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={[styles.tasksRow, isDesktop && styles.tasksRowDesktop]}
+        <View style={styles.addRow}>
+          <TextInput
+            value={draftTask}
+            onChangeText={setDraftTask}
+            placeholder="Add a task…"
+            placeholderTextColor="rgba(240,241,237,0.55)"
+            style={[styles.input, isMobile && styles.inputMobile]}
+            returnKeyType="done"
+            onSubmitEditing={() => {
+              void addTask(draftTask, selectedDayKey);
+              setDraftTask("");
+            }}
+          />
+          <AnimatedPressable
+            style={styles.addPill}
+            onPress={() => {
+              void addTask(draftTask, selectedDayKey);
+              setDraftTask("");
+            }}
+          >
+            <Text style={styles.addPillText}>＋</Text>
+          </AnimatedPressable>
+        </View>
+
+        <Animated.View
+          key={selectedDayKey}
+          layout={LinearTransition.springify().damping(18).stiffness(220)}
+          style={{ width: "100%" }}
         >
-          {tasks.map((task) => (
-            <AnimatedPressable
-              key={task.title}
-              style={[styles.taskCard, isMobile && styles.taskCardMobile, isDesktop && { width: desktopCardWidth }]}
-              onPress={() => navigation.navigate(task.title.includes("focus") ? "Focus" : "Notes")}
-            >
-              <Text style={[styles.taskTime, isMobile && styles.taskTimeMobile]}>{task.time}</Text>
-              <Text style={[styles.taskTitle, isMobile && styles.taskTitleMobile]}>{task.title}</Text>
-              <Text style={[styles.priorityLabel, isMobile && styles.priorityLabelMobile]}>Priority</Text>
-              <View style={[styles.priorityPill, { backgroundColor: task.tone }]}>
-                <Text style={[styles.priorityText, isMobile && styles.priorityTextMobile]}>{task.priority}</Text>
-              </View>
-            </AnimatedPressable>
-          ))}
-        </ScrollView>
+          <ScrollView
+            horizontal={!isDesktop}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={[styles.tasksRow, isDesktop && styles.tasksRowDesktop]}
+          >
+            {tasksForDay.map((task) => (
+              <Animated.View
+                key={task.id}
+                entering={FadeInDown.duration(260)}
+                exiting={FadeOutUp.duration(180)}
+                layout={LinearTransition.springify().damping(18).stiffness(220)}
+              >
+                <AnimatedPressable
+                  style={[
+                    styles.taskCard,
+                    isMobile && styles.taskCardMobile,
+                    isDesktop && { width: desktopCardWidth },
+                    task.done && styles.taskCardDone
+                  ]}
+                  onPress={() => void toggleTask(task.id)}
+                >
+                  <Text style={[styles.taskTime, isMobile && styles.taskTimeMobile]}>
+                    {task.done ? "Done" : "Tap to finish"}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.taskTitle,
+                      isMobile && styles.taskTitleMobile,
+                      task.done && styles.taskTitleDone
+                    ]}
+                  >
+                    {task.title}
+                  </Text>
+                  <Text style={[styles.priorityLabel, isMobile && styles.priorityLabelMobile]}>
+                    {task.done ? "Completed" : "In progress"}
+                  </Text>
+                  <View style={[styles.priorityPill, { backgroundColor: task.done ? "#66715d" : "#f26b34" }]}>
+                    <Text style={[styles.priorityText, isMobile && styles.priorityTextMobile]}>
+                      {task.done ? "Done" : "Active"}
+                    </Text>
+                  </View>
+                </AnimatedPressable>
+              </Animated.View>
+            ))}
+          </ScrollView>
+        </Animated.View>
       </FadeInView>
 
       <FadeInView delay={240}>
@@ -148,6 +226,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center"
+  },
+  weatherActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm
+  },
+  weatherToggle: {
+    height: 38,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    backgroundColor: "rgba(240, 241, 237, 0.18)",
+    borderColor: "rgba(255,255,255,0.28)",
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  weatherToggleText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: "700"
   },
   weatherMain: {
     color: colors.white,
@@ -246,6 +344,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center"
   },
+  headerButtons: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    alignItems: "center"
+  },
   sectionTitle: {
     color: colors.white,
     fontSize: 56,
@@ -262,6 +365,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8
   },
+  clearButton: {
+    backgroundColor: "rgba(240,241,237,0.78)"
+  },
   addTaskText: {
     color: "#1c221c",
     fontWeight: "600",
@@ -269,6 +375,41 @@ const styles = StyleSheet.create({
   },
   addTaskTextMobile: {
     fontSize: 11
+  },
+  addRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.md
+  },
+  input: {
+    flex: 1,
+    height: 52,
+    borderRadius: radius.md,
+    backgroundColor: "rgba(24, 34, 24, 0.65)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    paddingHorizontal: 16,
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: "600"
+  },
+  inputMobile: {
+    height: 44,
+    fontSize: 13
+  },
+  addPill: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#f0f1ed",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  addPillText: {
+    color: "#1c221c",
+    fontSize: 22,
+    fontWeight: "800"
   },
   tasksRow: {
     gap: spacing.md,
@@ -283,6 +424,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: "#f2f3ef",
     padding: spacing.lg
+  },
+  taskCardDone: {
+    backgroundColor: "rgba(242, 243, 239, 0.74)"
   },
   taskCardMobile: {
     width: 160,
@@ -302,6 +446,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 46,
     lineHeight: 50
+  },
+  taskTitleDone: {
+    color: "rgba(17, 21, 17, 0.5)"
   },
   taskTitleMobile: {
     fontSize: 16,

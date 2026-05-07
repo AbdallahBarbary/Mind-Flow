@@ -8,8 +8,28 @@ import {
   setAuthToken,
   StatsDto
 } from "../services/api";
+import * as Location from "expo-location";
+import { fetchWeatherByCoords, WeatherSnapshot } from "../services/weather";
 
 type User = AuthResponse["user"];
+
+export type TaskDto = {
+  id: string;
+  title: string;
+  dayKey: string; // YYYY-MM-DD in local time
+  done: boolean;
+  createdAt: string;
+  completedAt?: string;
+};
+
+export type WeatherKind = "clear" | "rain";
+export type WeatherState = {
+  kind: WeatherKind;
+  tempC?: number;
+  label?: string;
+  updatedAt?: string;
+  isAuto: boolean;
+};
 
 type MindFlowState = {
   token: string | null;
@@ -17,6 +37,8 @@ type MindFlowState = {
   notes: NoteDto[];
   sessions: FocusSessionDto[];
   stats: StatsDto;
+  tasks: TaskDto[];
+  weather: WeatherState;
   isLoading: boolean;
   hydrateSession: () => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
@@ -28,9 +50,17 @@ type MindFlowState = {
   deleteNote: (id: string) => Promise<void>;
   completeFocusSession: (duration: number) => Promise<void>;
   fetchStats: () => Promise<void>;
+  hydrateTasks: () => Promise<void>;
+  addTask: (title: string, dayKey?: string) => Promise<void>;
+  toggleTask: (id: string) => Promise<void>;
+  clearCompletedTasks: () => Promise<void>;
+  setWeather: (weather: WeatherKind) => void;
+  refreshWeather: () => Promise<void>;
 };
 
 const sessionKey = "mindflow-session";
+const tasksKey = "mindflow-tasks-v1";
+const weatherKey = "mindflow-weather-v1";
 
 const defaultStats: StatsDto = {
   totalFocusMinutes: 138,
@@ -49,6 +79,17 @@ async function persistSession(token: string | null, user: User | null) {
   await AsyncStorage.setItem(sessionKey, JSON.stringify({ token, user }));
 }
 
+async function persistTasks(tasks: TaskDto[]) {
+  await AsyncStorage.setItem(tasksKey, JSON.stringify(tasks));
+}
+
+function toDayKey(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export const useMindFlowStore = create<MindFlowState>()((set, get) => ({
       token: null,
       user: null,
@@ -63,6 +104,16 @@ export const useMindFlowStore = create<MindFlowState>()((set, get) => ({
       ],
       sessions: [],
       stats: defaultStats,
+      tasks: [
+        {
+          id: "task-1",
+          title: "Add your first task",
+          dayKey: toDayKey(new Date()),
+          done: false,
+          createdAt: new Date().toISOString()
+        }
+      ],
+      weather: { kind: "rain", isAuto: true },
       isLoading: false,
 
       hydrateSession: async () => {
@@ -71,6 +122,29 @@ export const useMindFlowStore = create<MindFlowState>()((set, get) => ({
         const saved = JSON.parse(raw) as { token: string; user: User };
         setAuthToken(saved.token);
         set(saved);
+      },
+
+      hydrateTasks: async () => {
+        const raw = await AsyncStorage.getItem(tasksKey);
+        if (raw) {
+          const saved = JSON.parse(raw) as TaskDto[];
+          // Migrate old tasks that didn't have dayKey.
+          const migrated = saved.map((t) => ({
+            ...t,
+            dayKey: (t as TaskDto).dayKey ?? toDayKey(new Date(t.createdAt ?? Date.now()))
+          }));
+          set({ tasks: migrated });
+          await persistTasks(migrated);
+        }
+        const savedWeather = await AsyncStorage.getItem(weatherKey);
+        if (savedWeather) {
+          try {
+            const parsed = JSON.parse(savedWeather) as WeatherState;
+            if (parsed && (parsed.kind === "clear" || parsed.kind === "rain")) set({ weather: parsed });
+          } catch {
+            if (savedWeather === "clear" || savedWeather === "rain") set({ weather: { kind: savedWeather, isAuto: false } });
+          }
+        }
       },
 
       register: async (email, password) => {
@@ -143,5 +217,68 @@ export const useMindFlowStore = create<MindFlowState>()((set, get) => ({
       fetchStats: async () => {
         const { data } = await api.get<StatsDto>("/stats");
         set({ stats: data });
+      },
+
+      addTask: async (title, dayKey) => {
+        const trimmed = title.trim();
+        if (!trimmed) return;
+        const task: TaskDto = {
+          id: `task-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          title: trimmed,
+          dayKey: dayKey ?? toDayKey(new Date()),
+          done: false,
+          createdAt: new Date().toISOString()
+        };
+        const next = [task, ...get().tasks];
+        set({ tasks: next });
+        await persistTasks(next);
+      },
+
+      toggleTask: async (id) => {
+        const now = new Date().toISOString();
+        const next = get().tasks.map((t) =>
+          t.id === id ? { ...t, done: !t.done, completedAt: !t.done ? now : undefined } : t
+        );
+        set({ tasks: next });
+        await persistTasks(next);
+      },
+
+      clearCompletedTasks: async () => {
+        const next = get().tasks.filter((t) => !t.done);
+        set({ tasks: next });
+        await persistTasks(next);
+      },
+
+      setWeather: (weather) => {
+        const next: WeatherState = {
+          ...get().weather,
+          kind: weather,
+          isAuto: false,
+          updatedAt: new Date().toISOString()
+        };
+        set({ weather: next });
+        void AsyncStorage.setItem(weatherKey, JSON.stringify(next));
+      },
+
+      refreshWeather: async () => {
+        try {
+          const perm = await Location.requestForegroundPermissionsAsync();
+          if (perm.status !== "granted") return;
+          const pos = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced
+          });
+          const snap: WeatherSnapshot = await fetchWeatherByCoords(pos.coords.latitude, pos.coords.longitude);
+          const next: WeatherState = {
+            kind: snap.isRaining ? "rain" : "clear",
+            tempC: snap.tempC,
+            label: snap.label,
+            updatedAt: snap.updatedAt,
+            isAuto: true
+          };
+          set({ weather: next });
+          await AsyncStorage.setItem(weatherKey, JSON.stringify(next));
+        } catch {
+          // If weather fails, keep last known state.
+        }
       }
     }));

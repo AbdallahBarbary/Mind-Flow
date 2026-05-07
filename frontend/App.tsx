@@ -9,6 +9,8 @@ import { AppNavigator } from "./src/navigation/AppNavigator";
 export default function App() {
   const token = useMindFlowStore((state) => state.token);
   const hydrateSession = useMindFlowStore((state) => state.hydrateSession);
+  const hydrateTasks = useMindFlowStore((state) => state.hydrateTasks);
+  const refreshWeather = useMindFlowStore((state) => state.refreshWeather);
 
   useEffect(() => {
     if (typeof document !== "undefined") {
@@ -17,7 +19,11 @@ export default function App() {
       document.getElementById("root")?.style.setProperty("background-color", "#000000");
     }
     void hydrateSession();
-  }, [hydrateSession]);
+    void hydrateTasks();
+    void refreshWeather();
+    const id = setInterval(() => void refreshWeather(), 1000 * 60 * 30);
+    return () => clearInterval(id);
+  }, [hydrateSession, hydrateTasks, refreshWeather]);
 
   useEffect(() => {
     setAuthToken(token);

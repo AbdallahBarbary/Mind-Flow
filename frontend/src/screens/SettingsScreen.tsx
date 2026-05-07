@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { AnimatedPressable } from "../components/AnimatedPressable";
 import { PrimaryButton } from "../components/PrimaryButton";
+import { FadeInView } from "../components/FadeInView";
 import { ScreenShell } from "../components/ScreenShell";
 import { RootStackParamList } from "../navigation/types";
 import { colors, radius, spacing, typography } from "../theme/tokens";
@@ -24,32 +25,41 @@ export function SettingsScreen({ navigation }: Props) {
 
   return (
     <ScreenShell>
-      <AnimatedPressable style={styles.backButton} onPress={() => navigation.goBack()}>
-        <Text style={styles.backText}>← Back</Text>
-      </AnimatedPressable>
-      <Text style={[styles.title, isMobile && styles.titleMobile]}>Settings.</Text>
-      <View style={styles.list}>
-        {initialSettings.map((item, index) => (
-          <AnimatedPressable
-            key={item}
-            style={[styles.row, isMobile && styles.rowMobile]}
-            onPress={() =>
-              setEnabled((values) => values.map((value, i) => (i === index ? !value : value)))
-            }
-          >
-            <Text style={styles.rowLabel}>{item}</Text>
-            <View style={[styles.toggle, enabled[index] && styles.toggleOn]}>
-              <View style={[styles.knob, enabled[index] && styles.knobOn]} />
-            </View>
-          </AnimatedPressable>
-        ))}
-      </View>
+      <FadeInView>
+        <AnimatedPressable style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.backText}>← Back</Text>
+        </AnimatedPressable>
+      </FadeInView>
 
-      <View style={styles.bottom}>
+      <FadeInView delay={80}>
+        <Text style={[styles.title, isMobile && styles.titleMobile]}>Settings.</Text>
+      </FadeInView>
+
+      <FadeInView delay={140}>
+        <View style={styles.list}>
+          {initialSettings.map((item, index) => (
+            <FadeInView key={item} delay={170 + index * 40} distance={10}>
+              <AnimatedPressable
+                style={[styles.row, isMobile && styles.rowMobile]}
+                onPress={() =>
+                  setEnabled((values) => values.map((value, i) => (i === index ? !value : value)))
+                }
+              >
+                <Text style={styles.rowLabel}>{item}</Text>
+                <View style={[styles.toggle, enabled[index] && styles.toggleOn]}>
+                  <View style={[styles.knob, enabled[index] && styles.knobOn]} />
+                </View>
+              </AnimatedPressable>
+            </FadeInView>
+          ))}
+        </View>
+      </FadeInView>
+
+      <FadeInView delay={420} style={styles.bottom}>
         <PrimaryButton variant="ghost" onPress={() => navigation.navigate("Profile")}>
           View profile
         </PrimaryButton>
-      </View>
+      </FadeInView>
     </ScreenShell>
   );
 }
