@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+.expo/
+.env
+.env.local
+coverage/
+*.log
+frontend/.expo/
+frontend/web-build/
+backend/generated/
+backend/src/generated/
+backend/prisma/migrations/

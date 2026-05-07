@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mindflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mindflow
+      POSTGRES_PASSWORD: mindflow
+      POSTGRES_DB: mindflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - mindflow-data:/var/lib/postgresql/data
+
+volumes:
+  mindflow-data:
