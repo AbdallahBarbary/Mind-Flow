@@ -8,6 +8,10 @@ coverage/
 *.log
 frontend/.expo/
 frontend/web-build/
+frontend/.chrome-debug-profile*/
+frontend/.chrome-profile*/
+frontend/.chrome-profile-*/
+frontend/.chrome-debug-profile*/
 backend/generated/
 backend/src/generated/
 backend/prisma/migrations/
